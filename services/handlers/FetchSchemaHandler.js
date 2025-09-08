@@ -94,7 +94,7 @@ import { getDBConnection } from "../../database/connection.js";
 import fs from "fs/promises";
 import ExceptionHandler from "./ExceptionHandler.js";
 import { SchemasQueries } from "../../database/sqlQueries.js";
-import { normalizeVersion } from "../../utils/normalizeVersions.js"; 
+import { normalizeVersion, versionToArray } from "../../utils/normalizeVersions.js"; 
 import { toSafeFolderName } from "../../utils/normalizeAppName.js";
 // 👆 create a utils/versionUtils.js file for version + name helpers
 
@@ -118,9 +118,6 @@ export default class FetchSchemaHandler extends Handler {
       if (requestedVersion) {
         requestedVersion = normalizeVersion(requestedVersion);
       }
-      console.log("Jello")
-      console.log(appName);
-      console.log(requestedVersion);
 
       // --- 2. Get DB connection ---
       db = await getDBConnection();
@@ -148,9 +145,24 @@ export default class FetchSchemaHandler extends Handler {
           };
         }
 
-        // Pick the latest schema by created_at timestamp
-        rows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-        row = rows[0];
+        // 🔥 Find highest version instead of latest timestamp
+        let latestRow = rows[0];
+        let latestVersionArr = versionToArray(normalizeVersion(latestRow.app_version));
+
+        for (const r of rows) {
+          const currentVersionArr = versionToArray(normalizeVersion(r.app_version));
+          for (let i = 0; i < 3; i++) {
+            if (currentVersionArr[i] > latestVersionArr[i]) {
+              latestRow = r;
+              latestVersionArr = currentVersionArr;
+              break;
+            } else if (currentVersionArr[i] < latestVersionArr[i]) {
+              break; // no need to check further parts
+            }
+          }
+        }
+
+        row = latestRow;
       }
 
       // --- 4. Read schema file content from disk ---
