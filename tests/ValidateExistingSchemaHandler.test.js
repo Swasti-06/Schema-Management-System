@@ -16,7 +16,6 @@ jest.unstable_mockModule("../services/handlers/ExceptionHandler.js", () => ({
 // 2️⃣ Import after mocks
 const { getDBConnection } = await import("../database/connection.js");
 const fs = await import("fs");
-const ExceptionHandler = await import("../services/handlers/ExceptionHandler.js");
 import ValidateExistingSchemaHandler from "../services/handlers/ValidateExistingSchemaHandler.js";
 import { SchemasQueries } from "../database/sqlQueries.js";
 

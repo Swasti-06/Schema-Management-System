@@ -14,7 +14,6 @@ export default class FileValidationHandler extends Handler {
       return super.handle(req);
 
     } catch (err) {
-      // Throw the structured error object so Express sees it
       const formatted = ExceptionHandler.handle(err);
       throw formatted;
     }

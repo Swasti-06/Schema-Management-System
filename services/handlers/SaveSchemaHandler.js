@@ -73,7 +73,6 @@ export default class SaveSchemaHandler extends Handler {
       if (absoluteFilePath && fs.existsSync(absoluteFilePath)) {
         try {
           fs.unlinkSync(absoluteFilePath);
-          // Throw a clearer rollback error
           throw {
             error: "FileUploadRollback",
             details: `File was uploaded but rolled back due to DB error: ${err.message}`,

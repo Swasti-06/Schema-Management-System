@@ -8,7 +8,7 @@ import { SchemasQueries } from "../../database/sqlQueries.js";
 export default class CoreEditHandler extends Handler {
   async handle(req) {
     let db;
-    let absoluteFilePath; // track written file to rollback if needed
+    let absoluteFilePath; 
 
     try {
       // --- 1. Get DB connection ---
@@ -77,7 +77,6 @@ export default class CoreEditHandler extends Handler {
       throw handledError;
 
     } finally {
-      // --- Always close DB connection safely ---
       if (db) {
         try {
           await db.close();

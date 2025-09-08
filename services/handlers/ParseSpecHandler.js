@@ -36,7 +36,6 @@ export default class ParseSpecHandler extends Handler {
       return super.handle(req);
 
     } catch (err) {
-      // Throw the structured error object
       const formatted = ExceptionHandler.handle(err);
       throw formatted;
     }
