@@ -5,7 +5,7 @@ import { getDBConnection } from "../../database/connection.js";
 import ExceptionHandler from "./ExceptionHandler.js";
 import { SchemasQueries } from "../../database/sqlQueries.js";
 
-export default class CoreEditHandler extends Handler {
+export default class UpdateSchemaHandler extends Handler {
   async handle(req) {
     let db;
     let absoluteFilePath; 

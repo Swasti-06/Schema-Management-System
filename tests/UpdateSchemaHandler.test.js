@@ -1,108 +1,104 @@
-// --- Mock modules BEFORE importing ---
-jest.mock('../database/connection.js', () => ({
-  getDBConnection: jest.fn(),
-}));
+// tests/UpdateSchemaHandler.test.js
+import { expect } from "chai";
+import sinon from "sinon";
+import esmock from "esmock";
 
-jest.mock('fs', () => ({
-  existsSync: jest.fn(),
-  mkdirSync: jest.fn(),
-  writeFileSync: jest.fn(),
-  unlinkSync: jest.fn(),
-}));
-
-jest.mock('../services/handlers/ExceptionHandler.js', () => ({
-  handle: jest.fn(err => err),
-}));
-
-
-// --- Import after mocks ---
-const { getDBConnection } = require('../database/connection.js');
-const fs = require('fs');
-const ExceptionHandler = require('../services/handlers/ExceptionHandler.js');
-const UpdateSchemaHandler = require('../services/handlers/UpdateSchemaHandler.js').default;
-const { SchemasQueries } = require('../database/sqlQueries.js');
-const path = require('path');
-
-describe('UpdateSchemaHandler', () => {
+describe("UpdateSchemaHandler", () => {
+  let UpdateSchemaHandler;
   let handler;
-  let mockDb;
+  let fsStub;
+  let dbStub;
 
-  beforeEach(() => {
-    handler = new UpdateSchemaHandler();
-    jest.resetAllMocks();
-
-    mockDb = {
-      get: jest.fn(),
-      run: jest.fn(),
-      close: jest.fn(),
+  beforeEach(async () => {
+    // --- Stub fs ---
+    fsStub = {
+      existsSync: sinon.stub().returns(true),
+      mkdirSync: sinon.stub(),
+      writeFileSync: sinon.stub(),
+      unlinkSync: sinon.stub(),
     };
-    getDBConnection.mockResolvedValue(mockDb);
 
-    fs.existsSync.mockReturnValue(true);
-    fs.mkdirSync.mockImplementation(() => {});
-    fs.writeFileSync.mockImplementation(() => {});
-    fs.unlinkSync.mockImplementation(() => {});
-    ExceptionHandler.handle.mockImplementation(err => err);
+    // --- Stub DB ---
+    dbStub = {
+      get: sinon.stub(),
+      run: sinon.stub(),
+      close: sinon.stub(),
+    };
+
+    // --- esmock to replace fs + getDBConnection ---
+    UpdateSchemaHandler = await esmock(
+      "../services/handlers/UpdateSchemaHandler.js",
+      {
+        fs: fsStub,
+        "../database/connection.js": {
+          getDBConnection: async () => dbStub,
+        },
+      }
+    );
+
+    handler = new UpdateSchemaHandler();
   });
 
-  
+  afterEach(() => {
+    sinon.restore();
+  });
 
-it('should update file successfully and DB record', async () => {
-  const req = {
-    appName: 'TestApp',
-    app_version: '1.0.0',
-    file: { originalname: 'schema.json', buffer: 'test-buffer' },
-  };
-
-  const dbRecord = { id: 1, app_name: 'TestApp', app_version: '1.0.0' };
-  mockDb.get
-    .mockResolvedValueOnce(dbRecord) // check existing
-    .mockResolvedValueOnce({ ...dbRecord, file_path: path.join('database', 'uploads', 'TestApp', 'v1.0.0.json') }); // fetch saved
-
-  const result = await handler.handle(req);
-
-  const expectedFilePath = path.join('database', 'uploads', 'TestApp', 'v1.0.0.json');
-
-  expect(mockDb.get).toHaveBeenCalledWith(SchemasQueries.getByAppVersion, ['TestApp', '1.0.0']);
-  expect(fs.writeFileSync).toHaveBeenCalled();
-  expect(mockDb.run).toHaveBeenCalledWith(SchemasQueries.updateFilePathById, [expectedFilePath, 1]);
-  expect(fs.existsSync).toHaveBeenCalled();
-  expect(req.savedRecord).toBeDefined();
-  expect(result).toBeDefined();
-});
-
-
-  it('should rollback file if DB update fails', async () => {
+  it("should update file and DB successfully", async () => {
     const req = {
-      appName: 'TestApp',
-      app_version: '1.0.0',
-      file: { originalname: 'schema.json', buffer: 'test-buffer' },
+      appName: "testApp",
+      app_version: "1.0",
+      file: { originalname: "schema.json", buffer: Buffer.from("{}") },
     };
 
-    const dbRecord = { id: 1, app_name: 'TestApp', app_version: '1.0.0' };
-    mockDb.get.mockResolvedValueOnce(dbRecord); // check existing
-    mockDb.run.mockRejectedValueOnce(new Error('DB error'));
-
-    await expect(handler.handle(req)).rejects.toEqual({
-      error: 'FileUpdateRollback',
-      details: expect.stringContaining('DB update failed, rolled back file upload'),
+    // Stub DB responses
+    dbStub.get.withArgs(sinon.match.any, ["testApp", "1.0"]).resolves({ id: 1 });
+    dbStub.get.withArgs(sinon.match.any, [1]).resolves({
+      id: 1,
+      app_name: "testApp",
+      app_version: "1.0",
+      file_path: "database/uploads/testApp/v1.0.json",
+      created_at: new Date().toISOString(),
     });
 
-    expect(fs.unlinkSync).toHaveBeenCalled(); // rollback triggered
+    dbStub.run.resolves({ changes: 1 });
+
+    const result = await handler.handle(req);
+
+    expect(fsStub.writeFileSync.calledOnce).to.be.true;
+    expect(dbStub.run.calledOnce).to.be.true;
+    expect(result.savedRecord).to.have.property("file_path");
   });
 
-  it('should throw AppVersionNotFound if record does not exist', async () => {
-  const req = {
-    appName: 'TestApp',
-    app_version: '1.0.0',
-    file: { originalname: 'schema.json', buffer: 'test' },
-  };
-  mockDb.get.mockResolvedValueOnce(null);
+  it("should throw AppVersionNotFound if DB record does not exist", async () => {
+    const req = { appName: "testApp", app_version: "1.0", file: { originalname: "schema.json", buffer: Buffer.from("{}") } };
+    dbStub.get.resolves(null);
 
-  await expect(handler.handle(req)).rejects.toEqual({
-    error: 'AppVersionNotFound',
-    details: 'No existing record found for app_version 1.0.0',
+    try {
+      await handler.handle(req);
+      throw new Error("Expected AppVersionNotFound");
+    } catch (err) {
+      expect(err.error).to.equal("AppVersionNotFound"); 
+      expect(err.details).to.include("No existing record found");
+    }
   });
-});
 
+  it("should rollback file if DB update fails", async () => {
+    const req = {
+      appName: "testApp",
+      app_version: "1.0",
+      file: { originalname: "schema.json", buffer: Buffer.from("{}") },
+    };
+
+    dbStub.get.withArgs(sinon.match.any, ["testApp", "1.0"]).resolves({ id: 1 });
+    dbStub.run.rejects(new Error("DB failure"));
+
+    try {
+      await handler.handle(req);
+      throw new Error("Expected FileUpdateRollback");
+    } catch (err) {
+      expect(fsStub.unlinkSync.calledOnce).to.be.true;
+      expect(err.error).to.equal("FileUpdateRollback"); 
+      expect(err.details).to.include("DB update failed");
+    }
+  });
 });

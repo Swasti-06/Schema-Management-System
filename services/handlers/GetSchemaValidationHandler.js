@@ -6,8 +6,6 @@ export default class GetSchemaValidationHandler extends Handler {
   async handle(req) {
     try {
       let { appName } = req.query;
-      // Normalize appName → safe for DB and folder names
-      appName = toSafeFolderName(appName);
 
       if (!appName) {
         throw {
@@ -15,6 +13,10 @@ export default class GetSchemaValidationHandler extends Handler {
           details: "appName is required",
         };
       }
+
+      // Normalize appName → safe for DB and folder names
+      appName = toSafeFolderName(appName);
+
 
       return super.handle(req);
 

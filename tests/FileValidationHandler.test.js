@@ -1,5 +1,5 @@
-// tests/FileValidationHandler.test.mjs
-import { jest } from "@jest/globals";
+// tests/FileValidationHandler.test.js
+import { expect } from "chai";
 import FileValidationHandler from "../services/handlers/FileValidationHandler.js";
 
 // --- Mock Handler superclass ---
@@ -10,43 +10,48 @@ class MockHandler {
 }
 
 // Patch FileValidationHandler to extend the mock handler
-FileValidationHandler.prototype.__proto__ = MockHandler.prototype;
+Object.setPrototypeOf(FileValidationHandler.prototype, MockHandler.prototype);
 
-
-
-
-describe("FileValidationHandler", () => {
-
-  it("should pass through if file is provided", async () => {
+describe("FileValidationHandler", function () {
+  it("should pass through if file is provided", async function () {
     const handler = new FileValidationHandler();
     const req = {
       file: { buffer: Buffer.from("dummy content") },
     };
 
     const result = await handler.handle(req);
-    expect(result).toBe("nextHandlerCalled"); // super.handle called
+    expect(result).to.equal("nextHandlerCalled"); // super.handle called
   });
 
-  it("should throw error if no file is attached", async () => {
+  it("should throw error if no file is attached", async function () {
     const handler = new FileValidationHandler();
     const req = {}; // no file
 
-    await expect(handler.handle(req)).rejects.toMatchObject({
-      status: 400,
-      error: "FileMissing",
-      details: "No file uploaded in request",
-    });
+    try {
+      await handler.handle(req);
+      throw new Error("Expected handler to throw, but it did not");
+    } catch (err) {
+      expect(err).to.include({
+        status: 400,
+        error: "FileMissing",
+        details: "No file uploaded in request",
+      });
+    }
   });
 
-  it("should throw error if file.buffer is missing", async () => {
+  it("should throw error if file.buffer is missing", async function () {
     const handler = new FileValidationHandler();
     const req = { file: {} }; // no buffer
 
-    await expect(handler.handle(req)).rejects.toMatchObject({
-      status: 400,
-      error: "FileMissing",
-      details: "No file uploaded in request",
-    });
+    try {
+      await handler.handle(req);
+      throw new Error("Expected handler to throw, but it did not");
+    } catch (err) {
+      expect(err).to.include({
+        status: 400,
+        error: "FileMissing",
+        details: "No file uploaded in request",
+      });
+    }
   });
-
 });

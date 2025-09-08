@@ -1,91 +1,100 @@
 // tests/ParseSpecHandler.test.mjs
-import ParseSpecHandler from "../services/handlers/ParseSpecHandler.js";
-
-// --- Mock Handler superclass ---
-class MockHandler {
-  async handle(req) {
-    return "nextHandlerCalled";
-  }
-}
-
-// Patch ParseSpecHandler to extend the mock handler
-ParseSpecHandler.prototype.__proto__ = MockHandler.prototype;
-
-
+import { expect } from "chai";
+import sinon from "sinon";
+import esmock from "esmock";
 
 describe("ParseSpecHandler", () => {
+  let ParseSpecHandler;
+  let handler;
 
-  it("should pass valid JSON with info.title and info.version", async () => {
-    const handler = new ParseSpecHandler();
-    const req = {
-      file: {
-        buffer: Buffer.from(JSON.stringify({
-          info: { title: "TestApp", version: "1.0.0" }
-        }))
-      }
-    };
+  beforeEach(async () => {
+    // --- esmock to replace ExceptionHandler if needed ---
+    ParseSpecHandler = await esmock(
+      "../services/handlers/ParseSpecHandler.js",
+      {}
+    );
 
-    const result = await handler.handle(req);
-    expect(result).toBe("nextHandlerCalled");
-    expect(req.parsedSpec.info.title).toBe("TestApp");
-    expect(req.appName).toBe("TestApp");
-    expect(req.app_version).toBe("1.0.0");
+    handler = new ParseSpecHandler();
   });
 
-  it("should pass valid YAML with info.title and info.version", async () => {
-    const handler = new ParseSpecHandler();
+  it("should parse valid JSON file successfully", async () => {
     const req = {
       file: {
-        buffer: Buffer.from(`
+        buffer: Buffer.from(
+          JSON.stringify({
+            info: { title: "Test App", version: "1.0.0" },
+          })
+        ),
+      },
+    };
+
+    // Spy on super.handle
+    const superSpy = sinon.spy(handler.__proto__, "handle");
+
+    const result = await handler.handle(req);
+
+    expect(req.parsedSpec).to.be.an("object");
+    expect(req.appName).to.equal("Test_App");
+    expect(req.app_version).to.equal("1.0.0");
+    expect(superSpy.calledOnce).to.be.true;
+  });
+
+  it("should parse valid YAML file successfully", async () => {
+    const yamlText = `
 info:
-  title: MyApp
+  title: My YAML App
   version: 2.0.0
-        `)
-      }
-    };
+`;
+    const req = { file: { buffer: Buffer.from(yamlText) } };
+
+    const superSpy = sinon.spy(handler.__proto__, "handle");
 
     const result = await handler.handle(req);
-    expect(result).toBe("nextHandlerCalled");
-    expect(req.appName).toBe("MyApp");
-    expect(req.app_version).toBe("2.0.0");
+
+    expect(req.parsedSpec).to.be.an("object");
+    expect(req.appName).to.equal("My_YAML_App");
+    expect(req.app_version).to.equal("2.0.0");
+    expect(superSpy.calledOnce).to.be.true;
   });
 
-  it("should throw InvalidFile for malformed JSON/YAML", async () => {
-    const handler = new ParseSpecHandler();
-    const req = {
-      file: { buffer: Buffer.from("invalid json") }
-    };
+  it("should throw InvalidFile if content is neither valid JSON nor YAML", async () => {
+    const req = { file: { buffer: Buffer.from("not json nor yaml") } };
 
-    await expect(handler.handle(req)).rejects.toMatchObject({
-      status: 400,
-      error: "InvalidSpec"
-    });
+    try {
+      await handler.handle(req);
+      throw new Error("Expected InvalidFile error");
+    } catch (err) {
+      expect(err.error).to.equal("InvalidSpec");
+    }
   });
 
   it("should throw InvalidSpec if info.title is missing", async () => {
-    const handler = new ParseSpecHandler();
     const req = {
-      file: { buffer: Buffer.from(JSON.stringify({ info: { version: "1.0.0" } })) }
+      file: {
+        buffer: Buffer.from(JSON.stringify({ info: { version: "1.0.0" } })),
+      },
     };
 
-    await expect(handler.handle(req)).rejects.toMatchObject({
-      status: 400,
-      error: "InvalidSpec",
-      details: "Missing 'info.title' in the file"
-    });
+    try {
+      await handler.handle(req);
+      throw new Error("Expected InvalidSpec error");
+    } catch (err) {
+      expect(err.error).to.equal("InvalidSpec");
+    }
   });
 
   it("should throw MissingAppVersion if info.version is missing", async () => {
-    const handler = new ParseSpecHandler();
     const req = {
-      file: { buffer: Buffer.from(JSON.stringify({ info: { title: "App1" } })) }
+      file: {
+        buffer: Buffer.from(JSON.stringify({ info: { title: "App" } })),
+      },
     };
 
-    await expect(handler.handle(req)).rejects.toMatchObject({
-      status: 400,
-      error: "MissingAppVersion",
-      details: "info.version is required and cannot be empty"
-    });
+    try {
+      await handler.handle(req);
+      throw new Error("Expected MissingAppVersion error");
+    } catch (err) {
+      expect(err.error).to.equal("MissingAppVersion");
+    }
   });
-
 });

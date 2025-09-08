@@ -69,21 +69,19 @@ export default class SaveSchemaHandler extends Handler {
       return super.handle(req);
 
     } catch (err) {
-      // 🔹 Rollback file if DB part failed
-      if (absoluteFilePath && fs.existsSync(absoluteFilePath)) {
-        try {
-          fs.unlinkSync(absoluteFilePath);
-          throw {
-            error: "FileUploadRollback",
-            details: `File was uploaded but rolled back due to DB error: ${err.message}`,
-          };
-        } catch (unlinkErr) {
-          console.error("Rollback failed: could not delete file", unlinkErr);
-        }
-      }
-
-      const handledError = ExceptionHandler.handle(err);
-      throw handledError;
+      // Rollback file if DB part failed
+if (absoluteFilePath && fs.existsSync(absoluteFilePath)) {
+  try {
+    fs.unlinkSync(absoluteFilePath);
+  } catch (unlinkErr) {
+    console.error("Rollback failed: could not delete file", unlinkErr);
+  }
+  // throw rollback error outside the fs try
+  throw {
+    error: "FileUploadRollback",
+    details: `File was uploaded but rolled back due to DB error: ${err.message}`,
+  };
+}
 
     } finally {
       if (db) {

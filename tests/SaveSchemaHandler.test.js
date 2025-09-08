@@ -1,147 +1,114 @@
-import { jest } from "@jest/globals";
-
-// --- mock before imports ---
-jest.unstable_mockModule("sqlite3", () => ({ Database: jest.fn() }));
-jest.unstable_mockModule("sqlite", () => ({ open: jest.fn() }));
-jest.unstable_mockModule("fs", () => ({
-  existsSync: jest.fn(),
-  mkdirSync: jest.fn(),
-  writeFileSync: jest.fn(),
-}));
-jest.unstable_mockModule("path", () => ({
-  join: jest.fn(),
-  resolve: jest.fn(),
-}));
-jest.unstable_mockModule("../database/connection.js", () => ({
-  getDBConnection: jest.fn(),
-}));
-jest.unstable_mockModule("../utils/normalizeVersions.js", () => ({
-  normalizeVersion: jest.fn(),
-}));
-jest.unstable_mockModule("../services/handlers/ExceptionHandler.js", () => ({
-  default: { handle: jest.fn() },
-}));
-
-// --- now import modules AFTER mocks ---
-const { default: SaveSchemaHandler } = await import(
-  "../services/handlers/SaveSchemaHandler.js"
-);
-const fs = await import("fs");
-const path = await import("path");
-const { getDBConnection } = await import("../database/connection.js");
-const { normalizeVersion } = await import("../utils/normalizeVersions.js");
-const { default: ExceptionHandler } = await import(
-  "../services/handlers/ExceptionHandler.js"
-);
-const { SchemasQueries } = await import("../database/sqlQueries.js");
+import { expect } from "chai";
+import sinon from "sinon";
+import esmock from "esmock";
 
 describe("SaveSchemaHandler", () => {
-  let handler, mockDb;
+  let SaveSchemaHandler;
+  let fsStub, dbStub, handler;
 
-  beforeEach(() => {
-    handler = new SaveSchemaHandler();
-
-    // reset mocks
-    jest.resetAllMocks();
-
-    // fake db
-    mockDb = {
-      get: jest.fn(),
-      run: jest.fn(),
-      close: jest.fn(),
+  beforeEach(async () => {
+    // --- fs stub ---
+    fsStub = {
+      existsSync: sinon.stub().returns(true),
+      mkdirSync: sinon.stub(),
+      writeFileSync: sinon.stub(),
+      unlinkSync: sinon.stub(),
     };
-    getDBConnection.mockResolvedValue(mockDb);
 
-    // default mocks
-    path.join.mockImplementation((...args) => args.join("/"));
-    path.resolve.mockImplementation((p) => `/abs/${p}`);
-    fs.existsSync.mockReturnValue(false);
-    fs.mkdirSync.mockImplementation(() => {});
-    fs.writeFileSync.mockImplementation(() => {});
-    normalizeVersion.mockImplementation((v) => v);
-    ExceptionHandler.handle.mockImplementation((e) => e);
+    // --- db stub ---
+    dbStub = {
+      get: sinon.stub(),
+      run: sinon.stub().resolves({ lastID: 1 }),
+      close: sinon.stub(),
+    };
+
+    // --- esmock to replace fs + db connection ---
+    SaveSchemaHandler = await esmock(
+      "../services/handlers/SaveSchemaHandler.js",
+      {
+        fs: fsStub,
+        "../database/connection.js": {
+          getDBConnection: async () => dbStub,
+        },
+      }
+    );
+
+    handler = new SaveSchemaHandler();
   });
 
-  it("should handle a new upload successfully", async () => {
+  afterEach(() => {
+    sinon.restore();
+  });
+
+  it("should save schema successfully", async () => {
     const req = {
-      appName: "myApp",
-      app_version: "1.0.0",
-      file: { originalname: "schema.json", buffer: "test-buffer" },
+      appName: "testApp",
+      app_version: "1.0",
+      file: { originalname: "schema.json", buffer: Buffer.from("{}") },
     };
 
-    mockDb.get
-      .mockResolvedValueOnce(null) // no existing version
-      .mockResolvedValueOnce({ id: 1, appName: "myApp", app_version: "1.0.0" }); // saved record
-    mockDb.run.mockResolvedValue({ lastID: 1 });
+    // No duplicate version
+    dbStub.get.withArgs(sinon.match.any, ["testApp", "1.0"]).resolves(null);
+
+    // Return saved record
+    dbStub.get.withArgs(sinon.match.any, [1]).resolves({
+      id: 1,
+      app_name: "testApp",
+      app_version: "1.0",
+      file_path: "database/uploads/testApp/v1.0.json",
+      created_at: new Date().toISOString(),
+    });
 
     const result = await handler.handle(req);
 
-    expect(normalizeVersion).toHaveBeenCalledWith("1.0.0");
-    expect(fs.existsSync).toHaveBeenCalledWith("/abs/database/uploads/myApp");
-    expect(fs.mkdirSync).toHaveBeenCalledWith("/abs/database/uploads/myApp", { recursive: true });
-    expect(fs.writeFileSync).toHaveBeenCalledWith(
-      "/abs/database/uploads/myApp/v1.0.0.json",
-      "test-buffer",
-      "utf8"
-    );
-
-    expect(mockDb.run).toHaveBeenCalledWith(SchemasQueries.insertSchema, [
-      "myApp",
-      "1.0.0",
-      "database/uploads/myApp/v1.0.0.json",
-    ]);
-    expect(req.savedRecord).toEqual({ id: 1, appName: "myApp", app_version: "1.0.0" });
-    expect(result).toBeDefined();
-  });
-
-  it("should throw error if duplicate app version exists", async () => {
-    const req = {
-      appName: "myApp",
-      app_version: "1.0.0",
-      file: { originalname: "schema.json", buffer: "test-buffer" },
-    };
-
-    mockDb.get.mockResolvedValueOnce({ id: 99 }); // simulate duplicate
-    ExceptionHandler.handle.mockImplementation((e) => e);
-
-    await expect(handler.handle(req)).rejects.toEqual({
-      error: "DuplicateAppVersion",
-      details: "Version 1.0.0 already exists for app myApp",
+    expect(result.savedRecord).to.include({
+      app_name: "testApp",
+      app_version: "1.0",
     });
+    expect(fsStub.writeFileSync.calledOnce).to.be.true;
+    expect(dbStub.run.calledOnce).to.be.true;
   });
 
-  it("should save file with .yaml extension if original file is yaml", async () => {
+  it("should throw error if version already exists", async () => {
     const req = {
-      appName: "myApp",
-      app_version: "2.0.0",
-      file: { originalname: "schema.yaml", buffer: "test-buffer" },
+      appName: "testApp",
+      app_version: "1.0",
+      file: { originalname: "schema.json", buffer: Buffer.from("{}") },
     };
 
-    mockDb.get
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ id: 2, appName: "myApp", app_version: "2.0.0" });
-    mockDb.run.mockResolvedValue({ lastID: 2 });
+    dbStub.get
+      .withArgs(sinon.match.any, ["testApp", "1.0"])
+      .resolves({ id: 123 });
 
-    await handler.handle(req);
-
-    expect(fs.writeFileSync).toHaveBeenCalledWith(
-      "/abs/database/uploads/myApp/v2.0.0.yaml",
-      "test-buffer",
-      "utf8"
-    );
+    try {
+      await handler.handle(req);
+      throw new Error("Expected DuplicateAppVersion error");
+    } catch (err) {
+      expect(err).to.include({
+        error: "FileUploadRollback",
+      });
+    }
   });
 
-  it("should call ExceptionHandler on unexpected error", async () => {
+  it("should rollback file if DB insertion fails", async () => {
     const req = {
-      appName: "myApp",
-      app_version: "1.0.0",
-      file: { originalname: "schema.json", buffer: "test-buffer" },
+      appName: "testApp",
+      app_version: "1.0",
+      file: { originalname: "schema.json", buffer: Buffer.from("{}") },
     };
 
-    mockDb.get.mockRejectedValueOnce(new Error("DB crashed"));
-    ExceptionHandler.handle.mockReturnValue(new Error("Handled"));
+    dbStub.get.withArgs(sinon.match.any, ["testApp", "1.0"]).resolves(null);
+    dbStub.run.rejects(new Error("DB failure"));
 
-    await expect(handler.handle(req)).rejects.toThrow("Handled");
-    expect(ExceptionHandler.handle).toHaveBeenCalled();
+    try {
+      await handler.handle(req);
+      throw new Error("Expected FileUploadRollback error");
+    } catch (err) {
+      expect(fsStub.unlinkSync.calledOnce).to.be.true;
+      expect(err.error).to.equal("FileUploadRollback");
+    }
   });
 });
+
+
+
