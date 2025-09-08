@@ -1,0 +1,26 @@
+{
+  "openapi": "3.0.0",
+   "info": {
+    "title": "MyApp2",
+    "description": "Testing app",
+    "version": "4.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.example.com"
+    }
+  ],
+  "paths": {
+    "/flights": {
+      "get": {
+        "summary": "Get all flights",
+        "operationId": "getFlights",
+        "responses": {
+          "200": {
+            "description": "A list of flights"
+          }
+        }
+      }
+    }
+  }
+}
