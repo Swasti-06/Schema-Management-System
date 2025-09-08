@@ -191,3 +191,21 @@ npx jest <path-to-test-file> --runInBand
   `database/uploads/<appName>/v<version>.json|yaml`
 * DB stores metadata (`id, app_name, app_version, file_path, created_at`)
 * Rollback is implemented for upload/edit to ensure consistency between DB and filesystem
+
+## 📌 Versioning Rules & App Naming Rules
+
+* Version numbers are automatically normalized when uploading or fetching schemas.
+
+* You can provide versions in any of these formats:
+* 1 → normalized to 1.0.0
+* 2.3 → normalized to 2.3.0
+* 3.0.0 → stays 3.0.0
+* This ensures consistent storage and lookup in the database and file system.
+
+* App names are normalized before saving to disk.
+
+* Spaces (" ") are treated the same as underscores ("_").
+* Example:
+* "Flight API" → "Flight_API"
+* "Flight_API" → "Flight_API"
+* This ensures folder and file paths remain safe and consistent.
