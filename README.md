@@ -48,7 +48,7 @@ Supports **uploading, updating, and fetching** schemas, with validation, version
 │   ├── editChain.js          # Edit pipeline
 │   └── getChain.js           # Fetch pipeline
 ├── specs/                    # Example schema specs
-├── tests/                    # Unit tests (Jest)
+├── tests/                    # Unit tests (Mocha)
 │   ├── FetchSchemaHandler.test.js
 │   ├── FileValidationHandler.test.js
 │   ├── GetSchemaValidationHandler.test.js
