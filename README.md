@@ -81,7 +81,7 @@ node cli.js upload <path-to-schema-file>
 ### 2. Update an existing schema
 
 ```bash
-node cli.js update <path-to-schema-file>
+node cli.js edit <path-to-schema-file>
 ```
 
 * Requires `info.version` to already exist for the app
