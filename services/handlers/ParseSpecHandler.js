@@ -1,6 +1,8 @@
 import Handler from "./BaseHandler.js";
 import yaml from "js-yaml";
 import ExceptionHandler from "./ExceptionHandler.js";
+import { normalizeVersion } from "../../utils/normalizeVersions.js";
+import { toSafeFolderName } from "../../utils/normalizeAppName.js";
 
 export default class ParseSpecHandler extends Handler {
   async handle(req) {
@@ -30,8 +32,8 @@ export default class ParseSpecHandler extends Handler {
       }
 
       req.parsedSpec = parsed;
-      req.appName = parsed.info.title.replace(/\s+/g, "_");
-      req.app_version = parsed.info.version;
+      req.appName = toSafeFolderName(parsed.info.title);
+      req.app_version = normalizeVersion(parsed.info.version);
 
       return super.handle(req);
 

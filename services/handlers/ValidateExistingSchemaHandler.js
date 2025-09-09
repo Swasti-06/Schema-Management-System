@@ -1,6 +1,8 @@
 import Handler from "./BaseHandler.js";
 import { getDBConnection } from "../../database/connection.js";
 import { SchemasQueries } from "../../database/sqlQueries.js"; 
+import { normalizeVersion } from "../../utils/normalizeVersions.js";
+import { toSafeFolderName } from "../../utils/normalizeAppName.js";
 import fs from "fs";
 import path from "path";
 import ExceptionHandler from "./ExceptionHandler.js";
@@ -8,8 +10,8 @@ import ExceptionHandler from "./ExceptionHandler.js";
 export default class ValidateExistingSchemaHandler extends Handler {
   async handle(req) {
     try {
-      const appName = req.appName;
-      const appVersion = req.app_version;
+      let appName = toSafeFolderName(req.appName);
+      let appVersion = normalizeVersion(req.app_version);
 
       const db = await getDBConnection();
       const row = await db.get(SchemasQueries.getByAppVersion, [appName, appVersion]);
